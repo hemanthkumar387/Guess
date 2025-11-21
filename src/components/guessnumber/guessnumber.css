@@ -266,6 +266,7 @@ button:focus, input:focus, select:focus {
 
 /* very small phones */
 @media (max-width: 380px) {
+  .app { min-height: 85vh; }
   .avatar { width: 28px; height: 28px; flex: 0 0 28px; font-size: 12px; }
   .bubble { font-size: 13px; padding: 8px 9px; max-width: 92%; }
   .composer { padding: 8px; }
