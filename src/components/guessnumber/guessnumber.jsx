@@ -42,14 +42,13 @@ export default function ChatGuessGame() {
 
     const [gameActive, setGameActive] = useState(false);
     const [turn, setTurn] = useState(null); // 'system' | 'player'
+    const [started, setStarted] = useState(false); // controls Start/Reset label
 
     const [messages, setMessages] = useState([]);
     const msgIdRef = useRef(1);
     const messagesElRef = useRef(null);
     const inputRef = useRef(null);
     const sendBtnRef = useRef(null);
-    const [started, setStarted] = useState(false);
-
 
     // ---------- message helpers ----------
     function appendBot(html) {
@@ -69,44 +68,66 @@ export default function ChatGuessGame() {
     }
 
     useEffect(() => {
-        if (messagesElRef.current) messagesElRef.current.scrollTop = messagesElRef.current.scrollHeight;
+        if (messagesElRef.current) {
+            messagesElRef.current.scrollTop = messagesElRef.current.scrollHeight;
+        }
     }, [messages]);
 
-    // remove quick replies (data-guess)
+    // remove data-guess marker so QuickReplies disappears
     function consumeLastBotGuess() {
         setMessages((prev) => {
-            const idxRev = [...prev].reverse().findIndex((m) => m.type === "bot" && /data-guess="/.test(m.html));
+            const idxRev = [...prev].reverse().findIndex(
+                (m) => m.type === "bot" && /data-guess="/.test(m.html)
+            );
             if (idxRev === -1) return prev;
             const idx = prev.length - 1 - idxRev;
             const newMessages = prev.slice();
-            newMessages[idx] = { ...newMessages[idx], html: newMessages[idx].html.replace(/\s*data-guess=\"\d{4}\"/, "") };
+            newMessages[idx] = {
+                ...newMessages[idx],
+                html: newMessages[idx].html.replace(/\s*data-guess=\"\d{4}\"/, ""),
+            };
             return newMessages;
         });
     }
 
-    // system guess used after first-turn
+    // system guess (after the first)
     function systemGuessTurn() {
         if (!gameActive) return;
 
-        const remaining = systemCandidatesRef.current.filter((c) => !systemPreviousGuessesRef.current.has(c));
+        const remaining = systemCandidatesRef.current.filter(
+            (c) => !systemPreviousGuessesRef.current.has(c)
+        );
         if (remaining.length === 0) {
-            appendBot("I have no candidates left — the feedback seems inconsistent. Please Restart the game.");
+            appendBot(
+                "I have no candidates left — the feedback seems inconsistent. Please Reset the game."
+            );
             return;
         }
         const guess = remaining[Math.floor(Math.random() * remaining.length)];
         systemPreviousGuessesRef.current.add(guess);
-        appendBot(`<div data-guess="${guess}">I guess: <strong>${guess}</strong></div><div class="meta">Is this correct?</div>`);
+        appendBot(
+            `<div data-guess="${guess}">I guess: <strong>${guess}</strong></div><div class="meta">Select feedback below</div>`
+        );
 
         if (inputRef.current) inputRef.current.disabled = true;
         if (sendBtnRef.current) sendBtnRef.current.disabled = true;
     }
 
-    // reset UI
+    // reset UI & game state
     function resetUI() {
         msgIdRef.current = 1;
-        setMessages([{ id: msgIdRef.current++, type: "center", html: 'Ready. Click <strong>Start</strong> to begin. Think of a 4-digit secret (do NOT type it).' }]);
-        if (inputRef.current) inputRef.current.value = "";
-        if (inputRef.current) inputRef.current.disabled = true;
+        setMessages([
+            {
+                id: msgIdRef.current++,
+                type: "center",
+                html: 'Ready. Click <strong>Start</strong> to begin. Think of a 4-digit secret (do NOT type it).',
+            },
+        ]);
+
+        if (inputRef.current) {
+            inputRef.current.value = "";
+            inputRef.current.disabled = true;
+        }
         if (sendBtnRef.current) sendBtnRef.current.disabled = true;
 
         setSystemSecret(null);
@@ -119,9 +140,10 @@ export default function ChatGuessGame() {
         setTurn(null);
     }
 
-    // NEW: startGame computes the first guess up front and appends it
+    // start game; system prepares & makes first guess
     function startGame() {
         setStarted(true);
+
         const s = pad4(Math.floor(Math.random() * 10000));
         setSystemSecret(s);
 
@@ -133,56 +155,65 @@ export default function ChatGuessGame() {
         setGameActive(true);
         setTurn("system");
 
-        // prepare first-guess candidate list & choose first guess now
-        const remainingForFirst = systemCandidatesRef.current.filter((c) => !systemPreviousGuessesRef.current.has(c));
-        const firstGuess = remainingForFirst[Math.floor(Math.random() * remainingForFirst.length)];
-        // mark as tried
+        // choose first guess immediately
+        const remainingForFirst = systemCandidatesRef.current.filter(
+            (c) => !systemPreviousGuessesRef.current.has(c)
+        );
+        const firstGuess =
+            remainingForFirst[Math.floor(Math.random() * remainingForFirst.length)];
         systemPreviousGuessesRef.current.add(firstGuess);
 
-        // set both initial bot message and thinking, then after delay replace thinking with the first guess in one update
         const idBot = msgIdRef.current++;
         const idCenter = msgIdRef.current++;
         setMessages([
-            { id: idBot, type: "bot", html: "<strong>Hello!</strong> I will start by guessing your 4-digit secret. Give feedback for my guesses using the quick buttons I show." },
+            {
+                id: idBot,
+                type: "bot",
+                html:
+                    "<strong>Hello!</strong> I will start by guessing your 4-digit secret. " +
+                    "Use the dropdown below my guess to tell me how close I am.",
+            },
             { id: idCenter, type: "center", html: "<em>System is thinking...</em>" },
         ]);
 
         if (inputRef.current) inputRef.current.disabled = true;
         if (sendBtnRef.current) sendBtnRef.current.disabled = true;
 
-        // after thinking delay, replace center with the guess message (single setMessages update)
         setTimeout(() => {
             const guessMsgId = msgIdRef.current++;
             setMessages((prev) => {
-                // keep previous bot message(s) but remove centers and append the first guess message
                 const filtered = prev.filter((x) => x.type !== "center");
                 return [
                     ...filtered,
-                    { id: guessMsgId, type: "bot", html: `<div data-guess="${firstGuess}">I guess: <strong>${firstGuess}</strong></div><div class="meta">Is this correct?</div>` },
+                    {
+                        id: guessMsgId,
+                        type: "bot",
+                        html: `<div data-guess="${firstGuess}">I guess: <strong>${firstGuess}</strong></div><div class="meta">Select feedback below</div>`,
+                    },
                 ];
             });
-            // input remains disabled until user gives feedback
         }, 800);
     }
 
-    // handle feedback for system guess
+    // handle your feedback for system guess
     function handleUserFeedbackForSystem(guess, feedback) {
-        // remove quick replies immediately
         consumeLastBotGuess();
         appendUser(`Feedback for ${guess}: ${feedback.exact} exact, ${feedback.misplaced} misplaced`);
 
         if (feedback.exact === 4) {
-            appendBot(`<strong>Yay — I guessed it!</strong> Your secret is <strong>${guess}</strong>. I win.`);
-            endGame("System wins!");
+            appendBot(
+                `<strong>Yay — I guessed it!</strong> Your secret is <strong>${guess}</strong>. I win.`
+            );
+            endGame(`System wins! My secret was <strong>${systemSecret}</strong>.`);
             return;
         }
 
-        // update candidate refs & state
+
         const next = filterCandidatesArray(systemCandidatesRef.current, guess, feedback);
         systemCandidatesRef.current = next;
         setSystemCandidatesState(next);
 
-        appendBot("<div>Ok, Now it's your turn. Please type a guess at my secret.</div>");
+        appendBot("<div>Ok, now it's your turn. Please type a guess at my secret.</div>");
         setTurn("player");
         if (inputRef.current) {
             inputRef.current.disabled = false;
@@ -191,7 +222,7 @@ export default function ChatGuessGame() {
         if (sendBtnRef.current) sendBtnRef.current.disabled = false;
     }
 
-    // player guess
+    // your guess towards systemSecret
     function playerGuessSubmit() {
         if (!gameActive) return;
         if (turn !== "player") {
@@ -213,11 +244,12 @@ export default function ChatGuessGame() {
             endGame("Player wins!");
             return;
         } else {
-            appendBot(`<div>Nope — <strong>${fb.exact} exact</strong>, <strong>${fb.misplaced} misplaced</strong>. My turn to guess now.</div>`);
+            appendBot(
+                `<div>Nope — <strong>${fb.exact} exact</strong>, <strong>${fb.misplaced} misplaced</strong>. My turn to guess now.</div>`
+            );
             setTurn("system");
             if (inputRef.current) inputRef.current.disabled = true;
             if (sendBtnRef.current) sendBtnRef.current.disabled = true;
-            // next system guess uses systemGuessTurn (not the special first-case)
             setTimeout(systemGuessTurn, 600);
         }
     }
@@ -225,7 +257,7 @@ export default function ChatGuessGame() {
     function endGame(msg) {
         setGameActive(false);
         setTurn(null);
-        appendCenter(`<strong>${msg}</strong> Click Restart to play again.`);
+        appendCenter(`<strong>${msg}</strong> Click Reset to play again.`);
         if (inputRef.current) inputRef.current.disabled = true;
         if (sendBtnRef.current) sendBtnRef.current.disabled = true;
     }
@@ -234,8 +266,8 @@ export default function ChatGuessGame() {
     // QuickReplies component
     // -------------------
     function QuickReplies() {
-        // local state for the dropdown selection
-        const [value, setValue] = useState("0-0"); // "exact-misplaced"
+        // local state: "" means "Select feedback" placeholder
+        const [value, setValue] = useState("");
 
         // find last bot message with data-guess
         for (let i = messages.length - 1; i >= 0; i--) {
@@ -249,7 +281,12 @@ export default function ChatGuessGame() {
                 const options = [];
                 for (let ex = 0; ex <= 4; ex++) {
                     for (let mp = 0; mp <= 4 - ex; mp++) {
-                        options.push({ ex, mp, label: `${ex} exact, ${mp} misplaced`, key: `${ex}-${mp}` });
+                        options.push({
+                            ex,
+                            mp,
+                            label: `${ex} exact, ${mp} misplaced`,
+                            key: `${ex}-${mp}`,
+                        });
                     }
                 }
 
@@ -265,6 +302,9 @@ export default function ChatGuessGame() {
                                 value={value}
                                 onChange={(e) => setValue(e.target.value)}
                             >
+                                <option value="" disabled>
+                                    Select feedback
+                                </option>
                                 {options.map((opt) => (
                                     <option key={opt.key} value={opt.key}>
                                         {opt.label}
@@ -275,9 +315,12 @@ export default function ChatGuessGame() {
                             <button
                                 className="feedback-send btn"
                                 onClick={() => {
-                                    if (!value) return; // safety
+                                    if (!value) return;
                                     const [exS, mpS] = value.split("-");
-                                    handleUserFeedbackForSystem(guess, { exact: Number(exS), misplaced: Number(mpS) });
+                                    handleUserFeedbackForSystem(guess, {
+                                        exact: Number(exS),
+                                        misplaced: Number(mpS),
+                                    });
                                 }}
                                 disabled={!value}
                                 aria-disabled={!value}
@@ -293,7 +336,7 @@ export default function ChatGuessGame() {
         return null;
     }
 
-    // mount
+    // mount: show initial "Ready" message
     useEffect(() => {
         resetUI();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -348,9 +391,14 @@ export default function ChatGuessGame() {
 
                 <div className="composer">
                     <div className="text-input">
-                        <input ref={inputRef} maxLength="4" placeholder="Type your guess (4 digits)..." onKeyDown={(e) => e.key === "Enter" && playerGuessSubmit()} />
+                        <input
+                            ref={inputRef}
+                            maxLength="4"
+                            placeholder="Type your guess (4 digits)..."
+                            onKeyDown={(e) => e.key === "Enter" && playerGuessSubmit()}
+                        />
                     </div>
-                    <button ref={sendBtnRef} className="btn" onClick={() => playerGuessSubmit()}>
+                    <button ref={sendBtnRef} className="btn" onClick={playerGuessSubmit}>
                         Send
                     </button>
                 </div>
